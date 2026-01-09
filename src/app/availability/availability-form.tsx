@@ -233,7 +233,7 @@ export default function AvailabilityForm({ roundId, userId, timeSlots, initialAv
     return (
         <div className="bg-white shadow rounded-lg overflow-hidden">
             {/* Tabs */}
-            <div className="flex border-b border-gray-200">
+            <div className="flex border-b border-gray-200 overflow-x-auto no-scrollbar">
                 {(['interviewee', 'interviewer'] as const).map((role) => (
                     <button
                         key={role}
@@ -241,12 +241,12 @@ export default function AvailabilityForm({ roundId, userId, timeSlots, initialAv
                             setActiveRole(role)
                             setMessage(null)
                         }}
-                        className={`flex-1 py-4 px-6 text-center text-sm font-medium focus:outline-none cursor-pointer ${activeRole === role
+                        className={`flex-1 min-w-[150px] py-4 px-6 text-center text-sm font-medium focus:outline-none cursor-pointer whitespace-nowrap ${activeRole === role
                             ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50'
                             : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
                             }`}
                     >
-                        {role.charAt(0).toUpperCase() + role.slice(1)}
+                        {role === 'interviewee' ? 'I want to be Interviewed' : 'I want to Interview'}
                     </button>
                 ))}
             </div>
@@ -365,7 +365,7 @@ export default function AvailabilityForm({ roundId, userId, timeSlots, initialAv
                     <label className="block text-sm font-medium text-gray-700 mb-3">
                         Select Date
                     </label>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
                         {Array.from(new Set(timeSlots
                             .filter(s => {
                                 const slotTime = new Date(`${s.date}T${s.start_time}`);
@@ -378,9 +378,9 @@ export default function AvailabilityForm({ roundId, userId, timeSlots, initialAv
                                     key={date}
                                     onClick={() => setSelectedDate(date)}
                                     className={twMerge(
-                                        'px-4 py-2 rounded-full text-sm font-medium border transition-colors',
+                                        'px-4 py-2 rounded-full text-sm font-medium border transition-colors whitespace-nowrap',
                                         selectedDate === date
-                                            ? 'bg-indigo-600 text-white border-indigo-600'
+                                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
                                             : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                                     )}
                                 >
@@ -417,7 +417,7 @@ export default function AvailabilityForm({ roundId, userId, timeSlots, initialAv
                                 </div>
                             </div>
                         </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                             {timeSlots
                                 .filter(s => s.date === selectedDate)
                                 .filter(s => {

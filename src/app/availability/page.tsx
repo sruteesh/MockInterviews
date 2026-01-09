@@ -63,14 +63,14 @@ export default async function AvailabilityPage() {
         .single()
 
     return (
-        <div className="min-h-screen bg-gray-50 p-8">
+        <div className="min-h-screen bg-gray-50 p-4 sm:p-8">
             <div className="max-w-3xl mx-auto">
-                <header className="mb-8 flex justify-between items-center">
+                <header className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
-                        <h1 className="text-3xl font-bold text-gray-900">Manage Availability</h1>
+                        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Manage Availability</h1>
                         <p className="text-gray-600 mt-1">{activeRound.name}</p>
                     </div>
-                    <a href="/dashboard" className="text-sm text-indigo-600 hover:text-indigo-500">
+                    <a href="/dashboard" className="text-sm font-medium text-indigo-600 hover:text-indigo-500 bg-white px-4 py-2 rounded-lg shadow-sm border border-indigo-100">
                         Back to Dashboard
                     </a>
                 </header>

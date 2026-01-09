@@ -60,21 +60,21 @@ export default function DashboardClient({ user, activeRound, interviews, openInt
         <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 {/* Header */}
-                <header className="mb-8 flex justify-between items-start">
+                <header className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
                     <div>
-                        <h1 className="text-4xl font-bold text-gray-900">Mock Interviews</h1>
+                        <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Mock Interviews</h1>
                         {activeRound && (
-                            <p className="text-gray-600 mt-2">
+                            <p className="text-gray-600 mt-1 sm:mt-2 text-sm sm:base">
                                 {activeRound.name} • {new Date(activeRound.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {new Date(activeRound.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                             </p>
                         )}
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
                         <a
                             href="/availability"
-                            className="flex items-center gap-2 px-4 py-2 bg-white text-indigo-600 rounded-lg shadow-sm hover:shadow-md transition-shadow border border-indigo-200 hover:bg-indigo-50"
+                            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white text-indigo-600 rounded-lg shadow-sm hover:shadow-md transition-shadow border border-indigo-200 hover:bg-indigo-50"
                         >
                             <Calendar className="w-4 h-4" />
                             <span className="text-sm font-medium">Manage Availability</span>
@@ -84,10 +84,13 @@ export default function DashboardClient({ user, activeRound, interviews, openInt
                         <div className="relative">
                             <button
                                 onClick={() => setShowUserMenu(!showUserMenu)}
-                                className="flex items-center gap-3 px-4 py-2 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow border border-gray-200"
+                                className="flex items-center justify-between sm:justify-start gap-3 w-full sm:w-auto px-4 py-2.5 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow border border-gray-200"
                             >
-                                <UserCircle className="w-6 h-6 text-gray-600" />
-                                <span className="text-sm font-medium text-gray-700">{user.email}</span>
+                                <div className="flex items-center gap-3">
+                                    <UserCircle className="w-6 h-6 text-gray-600" />
+                                    <span className="text-sm font-medium text-gray-700 truncate max-w-[150px] sm:max-w-none">{user.email}</span>
+                                </div>
+                                <PlusCircle className={twMerge("w-4 h-4 text-gray-400 transition-transform sm:hidden", showUserMenu && "rotate-45")} />
                             </button>
 
                             {showUserMenu && (
@@ -113,40 +116,24 @@ export default function DashboardClient({ user, activeRound, interviews, openInt
                 ) : (
                     <div className="space-y-6">
                         {/* Tabs */}
-                        <div className="flex gap-2 bg-white p-1 rounded-lg shadow-sm">
-                            <button
-                                onClick={() => setActiveTab('my')}
-                                className={twMerge(
-                                    'flex-1 py-3 px-6 text-center text-sm font-medium rounded-md transition-all',
-                                    activeTab === 'my'
-                                        ? 'bg-indigo-600 text-white shadow-md'
-                                        : 'text-gray-600 hover:bg-gray-50'
-                                )}
-                            >
-                                My Interviews
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('open')}
-                                className={twMerge(
-                                    'flex-1 py-3 px-6 text-center text-sm font-medium rounded-md transition-all',
-                                    activeTab === 'open'
-                                        ? 'bg-indigo-600 text-white shadow-md'
-                                        : 'text-gray-600 hover:bg-gray-50'
-                                )}
-                            >
-                                Open Interviews
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('all')}
-                                className={twMerge(
-                                    'flex-1 py-3 px-6 text-center text-sm font-medium rounded-md transition-all',
-                                    activeTab === 'all'
-                                        ? 'bg-indigo-600 text-white shadow-md'
-                                        : 'text-gray-600 hover:bg-gray-50'
-                                )}
-                            >
-                                All Interviews
-                            </button>
+                        <div className="mb-8 bg-white p-1 rounded-xl shadow-sm border border-gray-200 flex overflow-x-auto no-scrollbar">
+                            {(['my', 'open', 'all'] as const).map((tab) => (
+                                <button
+                                    key={tab}
+                                    onClick={() => setActiveTab(tab)}
+                                    className={twMerge(
+                                        "flex-1 min-w-[140px] flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-sm font-medium transition-all whitespace-nowrap",
+                                        activeTab === tab
+                                            ? "bg-indigo-600 text-white shadow-md"
+                                            : "text-gray-600 hover:bg-gray-50"
+                                    )}
+                                >
+                                    {tab === 'my' && <User className="w-4 h-4" />}
+                                    {tab === 'open' && <PlusCircle className="w-4 h-4" />}
+                                    {tab === 'all' && <Calendar className="w-4 h-4" />}
+                                    {tab === 'my' ? 'My Interviews' : tab === 'open' ? 'Open Interviews' : 'All Interviews'}
+                                </button>
+                            ))}
                         </div>
 
                         {/* Grid */}
@@ -301,7 +288,7 @@ function InterviewCard({
                 {/* Participants */}
                 <div className="space-y-2">
                     <div className="flex items-center justify-between gap-2 text-sm">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
                             <User className="w-4 h-4 text-gray-400 flex-shrink-0" />
                             <span className="text-gray-500">Interviewer:</span>
                             <span className={`font-medium truncate ${isInterviewer ? 'text-indigo-600' : 'text-gray-900'}`}>
@@ -322,7 +309,7 @@ function InterviewCard({
                         )}
                     </div>
                     <div className="flex items-center justify-between gap-2 text-sm">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
                             <User className="w-4 h-4 text-gray-400 flex-shrink-0" />
                             <span className="text-gray-500">Candidate:</span>
                             <span className={`font-medium truncate ${isInterviewee ? 'text-indigo-600' : 'text-gray-900'}`}>
