@@ -20,11 +20,12 @@ interface AvailabilityFormProps {
     userId: string
     timeSlots: TimeSlot[]
     initialAvailabilities: any[]
+    occupiedSlotIds: string[]
 }
 
 const SUBJECTS = ['Product Sense', 'Metrics', 'RCA', 'Execution', 'Behavioral']
 
-export default function AvailabilityForm({ roundId, userId, timeSlots, initialAvailabilities }: AvailabilityFormProps) {
+export default function AvailabilityForm({ roundId, userId, timeSlots, initialAvailabilities, occupiedSlotIds }: AvailabilityFormProps) {
     const [activeRole, setActiveRole] = useState<Role>('interviewee')
     const [loading, setLoading] = useState(false)
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -34,7 +35,7 @@ export default function AvailabilityForm({ roundId, userId, timeSlots, initialAv
     const getInitialState = (role: Role) => {
         const avail = initialAvailabilities.find((a) => a.role === role)
         return {
-            subject: avail?.subject || '',
+            subjects: avail?.subject || [],
             selectedSlotIds: avail?.availability_slots?.map((s: any) => s.time_slot_id) || [],
             recordingConsent: avail?.recording_consent || false,
         }
@@ -58,13 +59,13 @@ export default function AvailabilityForm({ roundId, userId, timeSlots, initialAv
     const toggleSlot = (slotId: string) => {
         const currentSlots = currentState.selectedSlotIds
         const isSelected = currentSlots.includes(slotId)
-        const limit = activeRole === 'interviewee' ? 2 : 3
+        const limit = 5
 
         if (isSelected) {
             updateState({ selectedSlotIds: currentSlots.filter((id: string) => id !== slotId) })
         } else {
             if (currentSlots.length >= limit) {
-                setMessage({ type: 'error', text: `You can only select up to ${limit} slots as an ${activeRole}.` })
+                setMessage({ type: 'error', text: `You have reached the limit of ${limit} slots.` })
                 return
             }
             updateState({ selectedSlotIds: [...currentSlots, slotId] })
@@ -84,7 +85,7 @@ export default function AvailabilityForm({ roundId, userId, timeSlots, initialAv
                         user_id: userId,
                         round_id: roundId,
                         role: activeRole,
-                        subject: currentState.subject,
+                        subject: currentState.subjects,
                         recording_consent: currentState.recordingConsent,
                     },
                     { onConflict: 'user_id, round_id, role' }
@@ -128,9 +129,69 @@ export default function AvailabilityForm({ roundId, userId, timeSlots, initialAv
                         }))
                     )
                 if (insertError) throw insertError
+
+                // Create open interviews for new slots (for BOTH roles)
+                if (activeRole === 'interviewer') {
+                    // Interviewer providing slots - create with null interviewee
+                    const openInterviewsData = toAdd.map((slotId: string) => ({
+                        round_id: roundId,
+                        subject: currentState.subjects,
+                        interviewer_id: userId,
+                        interviewee_id: null,
+                        time_slot_id: slotId,
+                        recording_allowed: currentState.recordingConsent,
+                        status: 'Upcoming'
+                    }))
+
+                    const { error: interviewError } = await supabase
+                        .from('interviews')
+                        .insert(openInterviewsData)
+
+                    if (interviewError) throw interviewError
+                } else if (activeRole === 'interviewee') {
+                    // Interviewee providing slots - create with null interviewer
+                    const openInterviewsData = toAdd.map((slotId: string) => ({
+                        round_id: roundId,
+                        subject: currentState.subjects,
+                        interviewer_id: null,
+                        interviewee_id: userId,
+                        time_slot_id: slotId,
+                        recording_allowed: currentState.recordingConsent,
+                        status: 'Upcoming'
+                    }))
+
+                    const { error: interviewError } = await supabase
+                        .from('interviews')
+                        .insert(openInterviewsData)
+
+                    if (interviewError) throw interviewError
+                }
             }
 
-            // 3. Trigger Matchmaking
+            // Delete corresponding open interviews when removing slots
+            if (toRemove.length > 0) {
+                if (activeRole === 'interviewer') {
+                    const { error: deleteInterviewError } = await supabase
+                        .from('interviews')
+                        .delete()
+                        .eq('interviewer_id', userId)
+                        .is('interviewee_id', null)
+                        .in('time_slot_id', toRemove)
+
+                    if (deleteInterviewError) throw deleteInterviewError
+                } else if (activeRole === 'interviewee') {
+                    const { error: deleteInterviewError } = await supabase
+                        .from('interviews')
+                        .delete()
+                        .eq('interviewee_id', userId)
+                        .is('interviewer_id', null)
+                        .in('time_slot_id', toRemove)
+
+                    if (deleteInterviewError) throw deleteInterviewError
+                }
+            }
+
+            // 3. Trigger Matchmaking (to auto-match remaining slots)
             await fetch('/api/matchmake', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -172,30 +233,44 @@ export default function AvailabilityForm({ roundId, userId, timeSlots, initialAv
                 {/* Subject Selection */}
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-3">
-                        Select Subject (Required)
+                        Select Subjects (1-3 required)
                     </label>
                     <div className="flex flex-wrap gap-2">
-                        {SUBJECTS.map((subject) => (
-                            <button
-                                key={subject}
-                                onClick={() => updateState({ subject })}
-                                className={twMerge(
-                                    'px-4 py-2 rounded-full text-sm font-medium border transition-colors',
-                                    currentState.subject === subject
-                                        ? 'bg-indigo-600 text-white border-indigo-600'
-                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                                )}
-                            >
-                                {subject}
-                            </button>
-                        ))}
+                        {SUBJECTS.map((subject) => {
+                            const isSelected = currentState.subjects.includes(subject)
+                            return (
+                                <button
+                                    key={subject}
+                                    onClick={() => {
+                                        if (isSelected) {
+                                            updateState({ subjects: currentState.subjects.filter((s: string) => s !== subject) })
+                                        } else {
+                                            if (currentState.subjects.length >= 3) {
+                                                setMessage({ type: 'error', text: 'You can only select up to 3 subjects' })
+                                                return
+                                            }
+                                            updateState({ subjects: [...currentState.subjects, subject] })
+                                        }
+                                    }}
+                                    className={twMerge(
+                                        'px-4 py-2 rounded-full text-sm font-medium border transition-colors',
+                                        isSelected
+                                            ? 'bg-indigo-600 text-white border-indigo-600'
+                                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                    )}
+                                >
+                                    {subject} {isSelected && '✓'}
+                                </button>
+                            )
+                        })}
                     </div>
+                    <p className="text-xs text-gray-500 mt-2">{currentState.subjects.length}/3 selected</p>
                 </div>
 
                 {/* Selected Slots */}
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-3">
-                        Selected Slots ({currentState.selectedSlotIds.length} / {activeRole === 'interviewee' ? 2 : 3})
+                        Selected Slots ({currentState.selectedSlotIds.length} / 5)
                     </label>
                     <div className="flex flex-wrap gap-2 min-h-[40px]">
                         {currentState.selectedSlotIds.length === 0 ? (
@@ -249,29 +324,77 @@ export default function AvailabilityForm({ roundId, userId, timeSlots, initialAv
                 {/* Slot Selection */}
                 {selectedDate && (
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-3">
-                            Available Slots for {new Date(selectedDate).toLocaleDateString()}
-                        </label>
+                        <div className="flex justify-between items-center mb-3">
+                            <label className="block text-sm font-medium text-gray-700">
+                                Available Slots for {new Date(selectedDate).toLocaleDateString()}
+                            </label>
+                            {/* Legend */}
+                            <div className="flex gap-3 text-xs">
+                                <div className="flex items-center gap-1">
+                                    <div className="w-3 h-3 rounded bg-white border border-gray-300"></div>
+                                    <span className="text-gray-600">Available</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <div className="w-3 h-3 rounded bg-gray-100 border border-gray-300"></div>
+                                    <span className="text-gray-600">Selected</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <div className="w-3 h-3 rounded bg-red-50 border border-red-300"></div>
+                                    <span className="text-gray-600">Conflict</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <div className="w-3 h-3 rounded bg-amber-50 border border-amber-300"></div>
+                                    <span className="text-gray-600">Limit Reached</span>
+                                </div>
+                            </div>
+                        </div>
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                             {timeSlots
                                 .filter(slot => slot.date === selectedDate)
                                 .map((slot) => {
                                     const isSelected = currentState.selectedSlotIds.includes(slot.id)
+                                    const isOccupiedByOppositeRole = occupiedSlotIds.includes(slot.id) && !isSelected
+                                    const isLimitReached = currentState.selectedSlotIds.length >= 5 && !isSelected
+                                    const isDisabled = isSelected || isOccupiedByOppositeRole
+
+                                    const oppositeRole = activeRole === 'interviewer' ? 'interviewee' : 'interviewer'
+                                    const tooltipText = isOccupiedByOppositeRole
+                                        ? `⚠️ Already committed as ${oppositeRole}`
+                                        : isSelected
+                                            ? '✓ Selected'
+                                            : isLimitReached
+                                                ? '⚠️ Limit of 5 slots reached'
+                                                : 'Click to select'
+
                                     return (
-                                        <button
-                                            key={slot.id}
-                                            onClick={() => toggleSlot(slot.id)}
-                                            disabled={isSelected}
-                                            className={twMerge(
-                                                'flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm border transition-colors',
-                                                isSelected
-                                                    ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-default'
-                                                    : 'bg-white text-gray-700 border-gray-300 hover:border-indigo-500 hover:text-indigo-600'
-                                            )}
-                                        >
-                                            <Clock className="w-4 h-4" />
-                                            <span>{slot.start_time.slice(0, 5)} - {slot.end_time.slice(0, 5)}</span>
-                                        </button>
+                                        <div key={slot.id} className="relative group">
+                                            <button
+                                                onClick={() => toggleSlot(slot.id)}
+                                                disabled={isSelected || isOccupiedByOppositeRole}
+                                                className={twMerge(
+                                                    'w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm border transition-colors',
+                                                    isSelected
+                                                        ? 'bg-gray-100 text-gray-600 border-gray-300 cursor-default'
+                                                        : isOccupiedByOppositeRole
+                                                            ? 'bg-red-50 text-red-600 border-red-300 cursor-not-allowed'
+                                                            : isLimitReached
+                                                                ? 'bg-amber-50 text-amber-700 border-amber-200 hover:border-amber-400'
+                                                                : 'bg-white text-gray-700 border-gray-300 hover:border-indigo-500 hover:text-indigo-600'
+                                                )}
+                                            >
+                                                <Clock className="w-4 h-4" />
+                                                <span>{slot.start_time.slice(0, 5)} - {slot.end_time.slice(0, 5)}</span>
+                                            </button>
+                                            {/* Tooltip */}
+                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-10 pointer-events-none">
+                                                <div className="bg-gray-900 text-white text-xs rounded-lg py-2 px-3 whitespace-nowrap shadow-lg">
+                                                    {tooltipText}
+                                                    <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1">
+                                                        <div className="border-4 border-transparent border-t-gray-900"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
                                     )
                                 })}
                         </div>
@@ -304,13 +427,13 @@ export default function AvailabilityForm({ roundId, userId, timeSlots, initialAv
                 <div className="pt-4">
                     <button
                         onClick={handleSubmit}
-                        disabled={loading || !currentState.subject}
+                        disabled={loading || currentState.subjects.length === 0}
                         className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {loading ? 'Saving...' : 'Update Availability'}
                     </button>
-                    {!currentState.subject && (
-                        <p className="mt-2 text-sm text-red-500 text-center">Please select a subject.</p>
+                    {currentState.subjects.length === 0 && (
+                        <p className="mt-2 text-sm text-red-500 text-center">Please select at least one subject.</p>
                     )}
                 </div>
 

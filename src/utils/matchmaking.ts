@@ -64,7 +64,13 @@ export async function runMatchmaking(roundId: string) {
 
         for (const interviewer of interviewers) {
             if (interviewer.user_id === interviewee.user_id) continue // Prevent self-pairing
-            if (interviewer.subject !== interviewee.subject) continue
+
+            // Check for subject overlap
+            const intervieweeSubjects = Array.isArray(interviewee.subject) ? interviewee.subject : [interviewee.subject]
+            const interviewerSubjects = Array.isArray(interviewer.subject) ? interviewer.subject : [interviewer.subject]
+            const commonSubjects = intervieweeSubjects.filter((s: string) => interviewerSubjects.includes(s))
+
+            if (commonSubjects.length === 0) continue // No subject overlap
 
             // Find common slots
             const intervieweeSlots = interviewee.availability_slots.map((s: any) => s.time_slot_id)
@@ -79,6 +85,7 @@ export async function runMatchmaking(roundId: string) {
                 potentialMatches.push({
                     interviewer,
                     slotId,
+                    commonSubjects, // Store overlap for later use
                 })
             }
         }
@@ -97,15 +104,18 @@ export async function runMatchmaking(roundId: string) {
 
         const bestMatch = potentialMatches[0]
 
+        // Pick a random subject from the overlap
+        const selectedSubject = bestMatch.commonSubjects[Math.floor(Math.random() * bestMatch.commonSubjects.length)]
+
         // Create interview object
         const interview = {
             round_id: roundId,
-            subject: interviewee.subject,
+            subject: [selectedSubject],
             interviewer_id: bestMatch.interviewer.user_id,
             interviewee_id: interviewee.user_id,
             time_slot_id: bestMatch.slotId,
             recording_allowed: interviewee.recording_consent && bestMatch.interviewer.recording_consent,
-            meeting_link: 'https://meet.google.com/placeholder', // Placeholder
+            meeting_link: null, // No placeholder - auto-prompt on dashboard
             status: 'Upcoming',
         }
 

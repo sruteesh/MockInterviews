@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import AvailabilityForm from './availability-form'
@@ -45,6 +47,14 @@ export default async function AvailabilityPage() {
         .eq('user_id', user.id)
         .eq('round_id', activeRound.id)
 
+    // Get all slot IDs where user has availability in either role
+    const userSlotIds = new Set<string>()
+    availabilities?.forEach(avail => {
+        avail.availability_slots?.forEach((slot: any) => {
+            userSlotIds.add(slot.time_slot_id)
+        })
+    })
+
     return (
         <div className="min-h-screen bg-gray-50 p-8">
             <div className="max-w-3xl mx-auto">
@@ -63,6 +73,7 @@ export default async function AvailabilityPage() {
                     userId={user.id}
                     timeSlots={timeSlots || []}
                     initialAvailabilities={availabilities || []}
+                    occupiedSlotIds={Array.from(userSlotIds)}
                 />
             </div>
         </div>

@@ -45,7 +45,7 @@ create table availabilities (
   user_id uuid references profiles(id) not null,
   round_id uuid references rounds(id) not null,
   role text check (role in ('interviewer', 'interviewee')) not null,
-  subject text,
+  subject text[],
   recording_consent boolean default false,
   created_at timestamp with time zone default now(),
   unique(user_id, round_id, role)
@@ -63,9 +63,9 @@ create table availability_slots (
 create table interviews (
   id uuid primary key default uuid_generate_v4(),
   round_id uuid references rounds(id) not null,
-  subject text not null,
+  subject text[] not null,
   interviewer_id uuid references profiles(id) not null,
-  interviewee_id uuid references profiles(id) not null,
+  interviewee_id uuid references profiles(id),
   time_slot_id uuid references time_slots(id) not null,
   recording_allowed boolean default false,
   meeting_link text,
