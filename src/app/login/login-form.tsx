@@ -43,13 +43,15 @@ export default function LoginForm() {
                     setMessage('Check your email to confirm your account!')
                 }
             } else {
-                const { error } = await supabase.auth.signInWithPassword({
+                const { data, error } = await supabase.auth.signInWithPassword({
                     email,
                     password,
                 })
                 if (error) throw error
-                router.push('/dashboard')
-                router.refresh()
+                if (data.session) {
+                    router.push('/dashboard')
+                    router.refresh()
+                }
             }
         } catch (error: any) {
             setMessage(error.message || 'An error occurred')
