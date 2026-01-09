@@ -24,6 +24,7 @@ export default async function Dashboard() {
 
     let interviews: any[] = []
     let openInterviews: any[] = []
+    let allInterviews: any[] = []
 
     if (activeRound) {
         // Fetch user's interviews
@@ -31,8 +32,8 @@ export default async function Dashboard() {
             .from('interviews')
             .select(`
         *,
-        interviewer:interviewer_id(email),
-        interviewee:interviewee_id(email),
+        interviewer:interviewer_id(email, whatsapp_number),
+        interviewee:interviewee_id(email, whatsapp_number),
         time_slot:time_slot_id(date, start_time, end_time)
       `)
             .eq('round_id', activeRound.id)
@@ -51,8 +52,8 @@ export default async function Dashboard() {
             .from('interviews')
             .select(`
                 *,
-                interviewer:interviewer_id(email),
-                interviewee:interviewee_id(email),
+                interviewer:interviewer_id(email, whatsapp_number),
+                interviewee:interviewee_id(email, whatsapp_number),
                 time_slot:time_slot_id(date, start_time, end_time)
             `)
             .eq('round_id', activeRound.id)
@@ -60,6 +61,25 @@ export default async function Dashboard() {
 
         if (openData) {
             openInterviews = openData.sort((a, b) => {
+                const dateA = new Date(`${a.time_slot.date}T${a.time_slot.start_time}`)
+                const dateB = new Date(`${b.time_slot.date}T${b.time_slot.start_time}`)
+                return dateA.getTime() - dateB.getTime()
+            })
+        }
+
+        // Fetch ALL interviews for the round
+        const { data: allData } = await supabase
+            .from('interviews')
+            .select(`
+                *,
+                interviewer:interviewer_id(email, whatsapp_number),
+                interviewee:interviewee_id(email, whatsapp_number),
+                time_slot:time_slot_id(date, start_time, end_time)
+            `)
+            .eq('round_id', activeRound.id)
+
+        if (allData) {
+            allInterviews = allData.sort((a, b) => {
                 const dateA = new Date(`${a.time_slot.date}T${a.time_slot.start_time}`)
                 const dateB = new Date(`${b.time_slot.date}T${b.time_slot.start_time}`)
                 return dateA.getTime() - dateB.getTime()
@@ -73,6 +93,7 @@ export default async function Dashboard() {
             activeRound={activeRound}
             interviews={interviews}
             openInterviews={openInterviews}
+            allInterviews={allInterviews}
         />
     )
 }

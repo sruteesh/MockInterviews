@@ -1,10 +1,11 @@
 'use client'
 
 import { createClient } from '@/utils/supabase/client'
-import { useState } from 'react'
-import { Check, X, Clock } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { Check, X, Clock, Calendar, User, PlusCircle, MessageCircle, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import { useRouter } from 'next/navigation'
 
 type Role = 'interviewer' | 'interviewee'
 
@@ -21,15 +22,18 @@ interface AvailabilityFormProps {
     timeSlots: TimeSlot[]
     initialAvailabilities: any[]
     occupiedSlotIds: string[]
+    profile?: any
 }
 
 const SUBJECTS = ['Product Sense', 'Metrics', 'RCA', 'Execution', 'Behavioral']
 
-export default function AvailabilityForm({ roundId, userId, timeSlots, initialAvailabilities, occupiedSlotIds }: AvailabilityFormProps) {
+export default function AvailabilityForm({ roundId, userId, timeSlots, initialAvailabilities, occupiedSlotIds, profile }: AvailabilityFormProps) {
     const [activeRole, setActiveRole] = useState<Role>('interviewee')
     const [loading, setLoading] = useState(false)
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+    const messageRef = useRef<HTMLDivElement>(null)
     const [selectedDate, setSelectedDate] = useState<string | null>(null)
+    const [whatsappNumber, setWhatsappNumber] = useState(profile?.whatsapp_number || '')
 
     // Initialize state for both roles
     const getInitialState = (role: Role) => {
@@ -48,6 +52,14 @@ export default function AvailabilityForm({ roundId, userId, timeSlots, initialAv
 
     const currentState = state[activeRole]
     const supabase = createClient()
+    const router = useRouter()
+
+    // Auto-scroll to message when it appears
+    useEffect(() => {
+        if (message && messageRef.current) {
+            messageRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+    }, [message])
 
     const updateState = (updates: Partial<typeof currentState>) => {
         setState((prev) => ({
@@ -77,6 +89,16 @@ export default function AvailabilityForm({ roundId, userId, timeSlots, initialAv
         setMessage(null)
 
         try {
+            // 0. Update WhatsApp number in profile
+            if (whatsappNumber !== profile?.whatsapp_number) {
+                const { error: profileError } = await supabase
+                    .from('profiles')
+                    .update({ whatsapp_number: whatsappNumber })
+                    .eq('id', userId)
+
+                if (profileError) throw profileError
+            }
+
             // 1. Upsert availability record
             const { data: availData, error: availError } = await supabase
                 .from('availabilities')
@@ -229,7 +251,47 @@ export default function AvailabilityForm({ roundId, userId, timeSlots, initialAv
                 ))}
             </div>
 
+            {/* Feedback Message (Moved to top for visibility) */}
+            {message && (
+                <div
+                    ref={messageRef}
+                    className={twMerge(
+                        'm-6 p-4 rounded-lg text-sm flex items-start gap-3 border animate-in fade-in slide-in-from-top-2 duration-300',
+                        message.type === 'success'
+                            ? 'bg-green-50 text-green-800 border-green-100'
+                            : 'bg-red-50 text-red-800 border-red-100'
+                    )}
+                >
+                    {message.type === 'success' ? (
+                        <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />
+                    ) : (
+                        <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+                    )}
+                    <p className="font-medium">{message.text}</p>
+                </div>
+            )}
+
             <div className="p-6 space-y-8">
+                {/* Contact Details */}
+                <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100 max-w-md">
+                    <label className="block text-sm font-semibold text-indigo-900 mb-2">
+                        WhatsApp Contact (Optional)
+                    </label>
+                    <div className="flex items-center gap-2">
+                        <span className="text-gray-600 font-medium text-sm">+91</span>
+                        <input
+                            type="tel"
+                            placeholder="10-digit number"
+                            value={whatsappNumber}
+                            onChange={(e) => setWhatsappNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                            className="w-48 px-3 py-2 border border-indigo-200 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm text-gray-900 bg-white"
+                        />
+                    </div>
+                    <p className="text-[10px] text-indigo-600 mt-2">
+                        Other participants will see a "Ping" button to reach you.
+                    </p>
+                </div>
+
                 {/* Subject Selection */}
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-3">
@@ -304,20 +366,27 @@ export default function AvailabilityForm({ roundId, userId, timeSlots, initialAv
                         Select Date
                     </label>
                     <div className="flex flex-wrap gap-2">
-                        {Array.from(new Set(timeSlots.map(s => s.date))).sort().map((date) => (
-                            <button
-                                key={date}
-                                onClick={() => setSelectedDate(date)}
-                                className={twMerge(
-                                    'px-4 py-2 rounded-full text-sm font-medium border transition-colors',
-                                    selectedDate === date
-                                        ? 'bg-indigo-600 text-white border-indigo-600'
-                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                                )}
-                            >
-                                {new Date(date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
-                            </button>
-                        ))}
+                        {Array.from(new Set(timeSlots
+                            .filter(s => {
+                                const slotTime = new Date(`${s.date}T${s.start_time}`);
+                                return slotTime > new Date();
+                            })
+                            .map(s => s.date)))
+                            .sort()
+                            .map((date) => (
+                                <button
+                                    key={date}
+                                    onClick={() => setSelectedDate(date)}
+                                    className={twMerge(
+                                        'px-4 py-2 rounded-full text-sm font-medium border transition-colors',
+                                        selectedDate === date
+                                            ? 'bg-indigo-600 text-white border-indigo-600'
+                                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                    )}
+                                >
+                                    {new Date(date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                                </button>
+                            ))}
                     </div>
                 </div>
 
@@ -350,7 +419,12 @@ export default function AvailabilityForm({ roundId, userId, timeSlots, initialAv
                         </div>
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                             {timeSlots
-                                .filter(slot => slot.date === selectedDate)
+                                .filter(s => s.date === selectedDate)
+                                .filter(s => {
+                                    const slotTime = new Date(`${s.date}T${s.start_time}`);
+                                    return slotTime > new Date();
+                                })
+                                .sort((a, b) => a.start_time.localeCompare(b.start_time))
                                 .map((slot) => {
                                     const isSelected = currentState.selectedSlotIds.includes(slot.id)
                                     const isOccupiedByOppositeRole = occupiedSlotIds.includes(slot.id) && !isSelected
@@ -436,18 +510,6 @@ export default function AvailabilityForm({ roundId, userId, timeSlots, initialAv
                         <p className="mt-2 text-sm text-red-500 text-center">Please select at least one subject.</p>
                     )}
                 </div>
-
-                {/* Feedback Message */}
-                {message && (
-                    <div
-                        className={twMerge(
-                            'p-4 rounded-md text-sm text-center',
-                            message.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
-                        )}
-                    >
-                        {message.text}
-                    </div>
-                )}
             </div>
         </div>
     )

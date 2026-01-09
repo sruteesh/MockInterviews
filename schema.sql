@@ -4,7 +4,8 @@ create extension if not exists "uuid-ossp";
 -- Profiles table (auto-managed)
 create table profiles (
   id uuid primary key references auth.users(id) on delete cascade,
-  email text
+  email text,
+  whatsapp_number text
 );
 
 -- Trigger to create profile on signup
@@ -64,7 +65,7 @@ create table interviews (
   id uuid primary key default uuid_generate_v4(),
   round_id uuid references rounds(id) not null,
   subject text[] not null,
-  interviewer_id uuid references profiles(id) not null,
+  interviewer_id uuid references profiles(id),
   interviewee_id uuid references profiles(id),
   time_slot_id uuid references time_slots(id) not null,
   recording_allowed boolean default false,
@@ -77,6 +78,7 @@ create table interviews (
 -- RLS Policies
 alter table profiles enable row level security;
 create policy "Profiles are viewable by everyone" on profiles for select using (true);
+create policy "Users can update their own profiles" on profiles for update using (auth.uid() = id);
 
 alter table rounds enable row level security;
 create policy "Rounds are viewable by everyone" on rounds for select using (true);

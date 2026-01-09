@@ -55,6 +55,13 @@ export default async function AvailabilityPage() {
         })
     })
 
+    // Fetch user profile for WhatsApp number
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single()
+
     return (
         <div className="min-h-screen bg-gray-50 p-8">
             <div className="max-w-3xl mx-auto">
@@ -74,6 +81,7 @@ export default async function AvailabilityPage() {
                     timeSlots={timeSlots || []}
                     initialAvailabilities={availabilities || []}
                     occupiedSlotIds={Array.from(userSlotIds)}
+                    profile={profile}
                 />
             </div>
         </div>

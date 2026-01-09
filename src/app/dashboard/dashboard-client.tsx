@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Calendar, Video, User, PlusCircle, UserCircle, LogOut, Link as LinkIcon } from 'lucide-react'
+import { Calendar, Video, User, PlusCircle, UserCircle, LogOut, Link as LinkIcon, MessageCircle } from 'lucide-react'
 import { twMerge } from 'tailwind-merge'
 import { createClient } from '@/utils/supabase/client'
 import { updateMeetingLink, joinInterview, updateRecordingLink } from '@/app/actions'
@@ -12,27 +12,41 @@ interface DashboardClientProps {
     activeRound: any
     interviews: any[]
     openInterviews: any[]
+    allInterviews: any[]
 }
 
-export default function DashboardClient({ user, activeRound, interviews, openInterviews }: DashboardClientProps) {
+export default function DashboardClient({ user, activeRound, interviews, openInterviews, allInterviews }: DashboardClientProps) {
     const [activeTab, setActiveTab] = useState<'my' | 'all' | 'open'>('my')
     const [showUserMenu, setShowUserMenu] = useState(false)
+    const [joiningId, setJoiningId] = useState<string | null>(null)
+    const [autoEditId, setAutoEditId] = useState<string | null>(null)
     const router = useRouter()
     const supabase = createClient()
 
     const filteredInterviews = activeTab === 'my'
-        ? interviews.filter(i => i.interviewer_id === user.id || i.interviewee_id === user.id)
+        ? interviews
         : activeTab === 'open'
             ? openInterviews
-            : interviews
+            : allInterviews
 
-    const handleJoin = async (interviewId: string) => {
+    const handleJoin = async (interview: any) => {
+        setJoiningId(interview.id)
         try {
-            await joinInterview(interviewId)
+            await joinInterview(interview.id)
+
+            const placeholders = ['tbd', 'placeholder', 'pending', 'to be decided', 'none', 'null', 'meet.google.com/placeholder']
+            const isPlaceholder = !interview.meeting_link || placeholders.some(p => interview.meeting_link?.toLowerCase().includes(p))
+
+            if (isPlaceholder) {
+                setAutoEditId(interview.id)
+            }
+
             router.refresh()
             setActiveTab('my')
         } catch (error) {
             alert('Failed to join interview')
+        } finally {
+            setJoiningId(null)
         }
     }
 
@@ -147,8 +161,11 @@ export default function DashboardClient({ user, activeRound, interviews, openInt
                                         key={interview.id}
                                         interview={interview}
                                         currentUserId={user.id}
-                                        onJoin={() => handleJoin(interview.id)}
+                                        onJoin={() => handleJoin(interview)}
                                         isOpen={activeTab === 'open'}
+                                        isJoining={joiningId === interview.id}
+                                        autoEdit={autoEditId === interview.id}
+                                        onAutoEditComplete={() => setAutoEditId(null)}
                                     />
                                 ))
                             )}
@@ -160,7 +177,23 @@ export default function DashboardClient({ user, activeRound, interviews, openInt
     )
 }
 
-function InterviewCard({ interview, currentUserId, onJoin, isOpen }: { interview: any; currentUserId: string; onJoin?: () => void; isOpen?: boolean }) {
+function InterviewCard({
+    interview,
+    currentUserId,
+    onJoin,
+    isOpen,
+    isJoining,
+    autoEdit,
+    onAutoEditComplete
+}: {
+    interview: any;
+    currentUserId: string;
+    onJoin?: () => void;
+    isOpen?: boolean;
+    isJoining?: boolean;
+    autoEdit?: boolean;
+    onAutoEditComplete?: () => void;
+}) {
     const isParticipant = interview.interviewer_id === currentUserId || interview.interviewee_id === currentUserId
     const isInterviewer = interview.interviewer_id === currentUserId
     const isInterviewee = interview.interviewee_id === currentUserId
@@ -169,13 +202,30 @@ function InterviewCard({ interview, currentUserId, onJoin, isOpen }: { interview
     const [isSaving, setIsSaving] = useState(false)
     const [isEditingRecording, setIsEditingRecording] = useState(false)
     const [recordingLink, setRecordingLink] = useState(interview.recording_link || '')
+    const [editMessage, setEditMessage] = useState<string | null>(null)
 
-    // Auto-open edit mode if participant's interview has no meeting link
-    React.useEffect(() => {
-        if (isParticipant && !interview.meeting_link && interview.status === 'Upcoming') {
-            setIsEditingLink(true)
+    // Dynamically calculate status based on current time
+    const now = new Date()
+    const startTime = new Date(`${interview.time_slot.date}T${interview.time_slot.start_time}`)
+    const endTime = new Date(`${interview.time_slot.date}T${interview.time_slot.end_time}`)
+
+    let displayStatus = interview.status
+    if (displayStatus === 'Upcoming') {
+        if (now >= startTime && now <= endTime) {
+            displayStatus = 'Live'
+        } else if (now > endTime) {
+            displayStatus = 'Completed'
         }
-    }, [isParticipant, interview.meeting_link, interview.status])
+    }
+
+    // Handle auto-edit trigger
+    React.useEffect(() => {
+        if (autoEdit && !isEditingLink) {
+            setIsEditingLink(true)
+            setEditMessage('Please provide a valid meeting link to join.')
+            onAutoEditComplete?.()
+        }
+    }, [autoEdit, isEditingLink, onAutoEditComplete])
 
     const statusColors = {
         Upcoming: 'bg-blue-100 text-blue-800',
@@ -212,7 +262,7 @@ function InterviewCard({ interview, currentUserId, onJoin, isOpen }: { interview
     }
 
     return (
-        <div className="bg-white rounded-xl shadow-md hover:shadow-xl transition-shadow overflow-hidden border border-gray-100">
+        <div className="relative bg-white rounded-xl shadow-md hover:shadow-xl transition-shadow overflow-hidden border border-gray-100">
             {/* Header */}
             <div className="px-6 py-4 bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-gray-100">
                 <div className="flex flex-wrap gap-1.5">
@@ -228,10 +278,10 @@ function InterviewCard({ interview, currentUserId, onJoin, isOpen }: { interview
                         </span>
                     )}
                 </div>
-                <span className={`absolute top-4 right-4 px-3 py-1 text-xs font-semibold rounded-full ${statusColors[interview.status as keyof typeof statusColors] || 'bg-gray-100'}`}>
-                    {interview.status}
-                </span>
             </div>
+            <span className={`absolute top-4 right-4 px-3 py-1 text-xs font-semibold rounded-full z-10 ${statusColors[displayStatus as keyof typeof statusColors] || 'bg-gray-100'}`}>
+                {displayStatus}
+            </span>
 
             {/* Content */}
             <div className="p-6 space-y-4">
@@ -250,19 +300,47 @@ function InterviewCard({ interview, currentUserId, onJoin, isOpen }: { interview
 
                 {/* Participants */}
                 <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm">
-                        <User className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                        <span className="text-gray-500">Interviewer:</span>
-                        <span className={`font-medium truncate ${isInterviewer ? 'text-indigo-600' : 'text-gray-900'}`}>
-                            {interview.interviewer?.email || (isOpen ? 'Open' : 'Unknown')} {isInterviewer && '(You)'}
-                        </span>
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                        <div className="flex items-center gap-2">
+                            <User className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                            <span className="text-gray-500">Interviewer:</span>
+                            <span className={`font-medium truncate ${isInterviewer ? 'text-indigo-600' : 'text-gray-900'}`}>
+                                {interview.interviewer?.email || (isOpen ? 'Open' : 'Unknown')} {isInterviewer && '(You)'}
+                            </span>
+                        </div>
+                        {interview.interviewer?.whatsapp_number && interview.interviewer_id !== currentUserId && (
+                            <a
+                                href={`https://wa.me/91${interview.interviewer.whatsapp_number}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1 text-xs font-medium text-green-600 hover:text-green-700 bg-green-50 px-2 py-1 rounded-md border border-green-100 transition-colors"
+                                title="Ping Interviewer on WhatsApp"
+                            >
+                                <MessageCircle className="w-3 h-3" />
+                                Ping
+                            </a>
+                        )}
                     </div>
-                    <div className="flex items-center gap-2 text-sm">
-                        <User className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                        <span className="text-gray-500">Candidate:</span>
-                        <span className={`font-medium truncate ${isInterviewee ? 'text-indigo-600' : 'text-gray-900'}`}>
-                            {interview.interviewee?.email || (isOpen ? 'Open' : 'Unknown')} {isInterviewee && '(You)'}
-                        </span>
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                        <div className="flex items-center gap-2">
+                            <User className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                            <span className="text-gray-500">Candidate:</span>
+                            <span className={`font-medium truncate ${isInterviewee ? 'text-indigo-600' : 'text-gray-900'}`}>
+                                {interview.interviewee?.email || (isOpen ? 'Open' : 'Unknown')} {isInterviewee && '(You)'}
+                            </span>
+                        </div>
+                        {interview.interviewee?.whatsapp_number && interview.interviewee_id !== currentUserId && (
+                            <a
+                                href={`https://wa.me/91${interview.interviewee.whatsapp_number}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1 text-xs font-medium text-green-600 hover:text-green-700 bg-green-50 px-2 py-1 rounded-md border border-green-100 transition-colors"
+                                title="Ping Candidate on WhatsApp"
+                            >
+                                <MessageCircle className="w-3 h-3" />
+                                Ping
+                            </a>
+                        )}
                     </div>
                 </div>
 
@@ -271,16 +349,26 @@ function InterviewCard({ interview, currentUserId, onJoin, isOpen }: { interview
                     {isOpen ? (
                         <button
                             onClick={onJoin}
-                            className="flex items-center justify-center gap-2 w-full px-4 py-2.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm"
+                            disabled={isJoining}
+                            className="flex items-center justify-center gap-2 w-full px-4 py-2.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            <PlusCircle className="w-4 h-4" />
-                            Join Interview
+                            {isJoining ? (
+                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                                <PlusCircle className="w-4 h-4" />
+                            )}
+                            {isJoining ? 'Joining...' : 'Join Interview'}
                         </button>
                     ) : isParticipant ? (
                         <>
                             {/* Meeting Link */}
                             {isEditingLink ? (
                                 <div className="space-y-2">
+                                    {editMessage && (
+                                        <p className="text-xs font-medium text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-100">
+                                            {editMessage}
+                                        </p>
+                                    )}
                                     <input
                                         type="text"
                                         value={meetingLink}
@@ -306,15 +394,23 @@ function InterviewCard({ interview, currentUserId, onJoin, isOpen }: { interview
                                 </div>
                             ) : (
                                 <div className="flex gap-2">
-                                    <a
-                                        href={interview.meeting_link || '#'}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
+                                    <button
+                                        onClick={() => {
+                                            const placeholders = ['tbd', 'placeholder', 'pending', 'to be decided', 'none', 'null', 'meet.google.com/placeholder'];
+                                            const isPlaceholder = interview.meeting_link && placeholders.some(p => interview.meeting_link.toLowerCase().includes(p));
+
+                                            if (!interview.meeting_link || isPlaceholder) {
+                                                setIsEditingLink(true);
+                                                setEditMessage('Please provide a valid meeting link to join.');
+                                            } else {
+                                                window.open(interview.meeting_link, '_blank', 'noopener,noreferrer');
+                                            }
+                                        }}
                                         className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white rounded-lg transition-colors shadow-sm ${interview.meeting_link ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-gray-300 cursor-not-allowed'}`}
                                     >
                                         <Video className="w-4 h-4" />
                                         {interview.meeting_link ? 'Join' : 'No Link'}
-                                    </a>
+                                    </button>
                                     <button
                                         onClick={() => setIsEditingLink(true)}
                                         className="px-3 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 rounded-lg hover:bg-indigo-100"
