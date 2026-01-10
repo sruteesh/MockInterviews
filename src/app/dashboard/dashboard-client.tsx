@@ -23,11 +23,27 @@ export default function DashboardClient({ user, activeRound, interviews, openInt
     const router = useRouter()
     const supabase = createClient()
 
+    const getInterviewStatus = (interview: any) => {
+        const now = new Date()
+        const startTime = new Date(`${interview.time_slot.date}T${interview.time_slot.start_time}`)
+        const endTime = new Date(`${interview.time_slot.date}T${interview.time_slot.end_time}`)
+
+        if (interview.status === 'Upcoming') {
+            if (now >= startTime && now <= endTime) return 'Live'
+            if (now > endTime) return 'Completed'
+        }
+        return interview.status
+    }
+
     const filteredInterviews = activeTab === 'my'
-        ? interviews
+        ? interviews.filter(i => ['Upcoming', 'Live'].includes(getInterviewStatus(i)))
         : activeTab === 'open'
-            ? openInterviews
-            : allInterviews
+            ? openInterviews.filter(i => ['Upcoming', 'Live'].includes(getInterviewStatus(i)))
+            : allInterviews.filter(i =>
+                getInterviewStatus(i) === 'Completed' &&
+                i.interviewer_id &&
+                i.interviewee_id
+            )
 
     const handleJoin = async (interview: any) => {
         setJoiningId(interview.id)
