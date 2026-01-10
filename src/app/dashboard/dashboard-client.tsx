@@ -36,7 +36,11 @@ export default function DashboardClient({ user, activeRound, interviews, openInt
     }
 
     const filteredInterviews = activeTab === 'my'
-        ? interviews.filter(i => ['Upcoming', 'Live'].includes(getInterviewStatus(i)))
+        ? interviews.filter(i =>
+            ['Upcoming', 'Live'].includes(getInterviewStatus(i)) &&
+            i.interviewer_id &&
+            i.interviewee_id
+        )
         : activeTab === 'open'
             ? openInterviews.filter(i => ['Upcoming', 'Live'].includes(getInterviewStatus(i)))
             : allInterviews.filter(i =>
